@@ -1,0 +1,116 @@
+// ============================================================
+// Schema Prisma — ProjetoFormigueiro
+// REGRA: Status = CANCELED (nunca CANCELLED)
+// Slots: horários reais com startTime / endTime
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------
+// ENUMs
+// ------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  OPERATOR
+}
+
+// BookingStatus: APENAS CONFIRMED e CANCELED (1 L)
+// ❌ CANCELLED foi removido — nunca usar
+enum BookingStatus {
+  CONFIRMED
+  CANCELED
+}
+
+// ------------------------------------------------------------
+// User
+// ------------------------------------------------------------
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(OPERATOR)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  slotsCreated Slot[]
+  canceledBookings Booking[] @relation("CanceledBy")
+
+  @@map("users")
+}
+
+// ------------------------------------------------------------
+// Slot — Horário real com intervalo (startTime / endTime)
+// Substituiu o antigo modelo de period (MORNING/AFTERNOON)
+// ------------------------------------------------------------
+
+model Slot {
+  id               String   @id @default(uuid())
+
+  // Horário real — ex: 2026-05-20T09:30:00Z a 2026-05-20T10:00:00Z
+  startTime        DateTime
+  endTime          DateTime
+
+  maxCapacity      Int      @default(20)
+  blockedForSchool Boolean  @default(false)
+  active           Boolean  @default(true)
+
+  createdById      String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  createdBy        User     @relation(fields: [createdById], references: [id])
+  bookings         Booking[]
+
+  // Impede duplicação exata de slot
+  @@unique([startTime, endTime])
+
+  // Índice para busca por data (filtragem por dia via startTime)
+  @@index([startTime, active])
+
+  @@map("slots")
+}
+
+// ------------------------------------------------------------
+// Booking — Agendamento
+// ------------------------------------------------------------
+
+model Booking {
+  id            String        @id @default(uuid())
+  slotId        String
+  visitorName   String
+  visitorEmail  String
+  visitorPhone  String
+  visitorCount  Int
+  bookingCode   String        @unique @default(uuid())
+  schoolName    String?
+  notes         String?
+
+  // Status: CONFIRMED | CANCELED (nunca CANCELLED)
+  status        BookingStatus @default(CONFIRMED)
+
+  canceledAt    DateTime?
+  canceledById  String?
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  slot          Slot          @relation(fields: [slotId], references: [id])
+  canceledBy    User?         @relation("CanceledBy", fields: [canceledById], references: [id])
+
+  @@index([slotId, status])
+  @@index([visitorPhone])
+  @@index([visitorEmail])
+
+  @@map("bookings")
+}
