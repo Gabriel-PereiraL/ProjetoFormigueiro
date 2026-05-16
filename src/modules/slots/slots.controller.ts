@@ -7,6 +7,8 @@ import {
   listSlotsSchema,
 } from './slots.schemas';
 import { validateSlotStartTime } from '../../shared/utils/slotValidations';
+import { generateSlotsRange } from './slotGenerator.service';
+import { z } from 'zod';
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -25,6 +27,22 @@ function metaResponse(page: number, pageSize: number, total: number) {
     totalPages: Math.ceil(total / pageSize),
   };
 }
+
+// ── Schema de validação para geração de slots ────────────────
+
+const generateSlotsSchema = z
+  .object({
+    startDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'startDate deve estar no formato YYYY-MM-DD'),
+    endDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'endDate deve estar no formato YYYY-MM-DD'),
+  })
+  .refine((data) => data.startDate <= data.endDate, {
+    message: 'startDate deve ser anterior ou igual a endDate',
+    path: ['startDate'],
+  });
 
 // ── PUBLIC: Listar slots disponíveis por data ────────────────
 
@@ -230,6 +248,54 @@ export async function createSlot(req: Request, res: Response) {
   });
 
   return res.status(201).json({ data: slot });
+}
+
+// ── ADMIN: Gerar slots automaticamente para um intervalo ─────
+
+export async function generateSlots(req: Request, res: Response) {
+  const body = generateSlotsSchema.safeParse(req.body);
+
+  if (!body.success) {
+    return res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        details: body.error.flatten().fieldErrors,
+      },
+    });
+  }
+
+  const { startDate, endDate } = body.data;
+
+  try {
+    const result = await generateSlotsRange(
+      startDate,
+      endDate,
+      req.user!.id,
+    );
+
+    return res.status(201).json({
+      data: {
+        totalCreated: result.totalCreated,
+        totalSkipped: result.totalSkipped,
+        createdSlots: result.createdSlots.map((s) => ({
+          startTime: s.startTime.toISOString(),
+          endTime: s.endTime.toISOString(),
+        })),
+        skippedSlots: result.skippedSlots.map((s) => ({
+          startTime: s.startTime.toISOString(),
+          endTime: s.endTime.toISOString(),
+        })),
+      },
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Erro inesperado ao gerar slots.';
+    return res.status(422).json({
+      error: {
+        code: 'GENERATE_SLOTS_ERROR',
+        message,
+      },
+    });
+  }
 }
 
 // ── ADMIN: Atualizar slot ────────────────────────────────────

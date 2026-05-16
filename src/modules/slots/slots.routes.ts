@@ -4,6 +4,7 @@ import {
   listPublicSlots,
   listOperatorSlots,
   createSlot,
+  generateSlots,
   updateSlot,
   blockSlot,
   deactivateSlot,
@@ -27,6 +28,7 @@ operatorSlotsRoutes.get('/', listOperatorSlots);
 
 // ── ADMIN (auth: ADMIN) ───────────────────────────────────────
 // POST   /v1/admin/slots
+// POST   /v1/admin/slots/generate
 // PATCH  /v1/admin/slots/:slotId
 // PATCH  /v1/admin/slots/:slotId/block
 // DELETE /v1/admin/slots/:slotId  (soft delete)
@@ -34,6 +36,8 @@ operatorSlotsRoutes.get('/', listOperatorSlots);
 export const adminSlotsRoutes = Router();
 
 adminSlotsRoutes.use(authenticate, authorize('ADMIN'));
+
+adminSlotsRoutes.post('/generate', generateSlots);
 
 adminSlotsRoutes.post('/', createSlot);
 
